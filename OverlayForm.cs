@@ -6,15 +6,10 @@ using System.Windows.Forms;
 
 namespace CrosshairOverlay
 {
-    /// <summary>
-    /// A transparent, click-through, always-on-top overlay that draws a white
-    /// crosshair in the center of the primary screen and is excluded from
-    /// most screen-capture / streaming tools (Windows 10 2004+ / Windows 11).
-    /// </summary>
     public class OverlayForm : Form
     {
         // ---- Crosshair appearance (tweak to taste) ----
-        private const int ArmLength = 6;    // length of each arm, in pixels
+        private const int ArmLength = 7;    // length of each arm, in pixels
         private const int GapSize = 0;      // empty gap around the center (0 = solid plus)
         private const int Thickness = 1;    // line thickness
         private const int DotRadius = 0;    // center dot radius (0 = no dot, just the plus)
