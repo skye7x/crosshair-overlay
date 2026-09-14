@@ -46,7 +46,10 @@ namespace CrosshairOverlay
             ShowInTaskbar = false;
             TopMost = true;
             StartPosition = FormStartPosition.Manual;
-            Bounds = Screen.PrimaryScreen.Bounds; // full primary monitor
+            // Use the working area (screen minus taskbar), NOT the full screen bounds.
+            // A full-screen TopMost window can knock the taskbar out of its own
+            // always-on-top z-order, letting other windows get dragged above it.
+            Bounds = Screen.PrimaryScreen.WorkingArea;
             BackColor = Color.Magenta;            // arbitrary "key" color
             TransparencyKey = Color.Magenta;       // becomes fully transparent
             DoubleBuffered = true;
@@ -116,11 +119,24 @@ namespace CrosshairOverlay
             }
         }
 
+        private static Icon LoadAppIcon()
+        {
+            // The icon is embedded via <EmbeddedResource Include="crosshair.ico" /> in the csproj.
+            var asm = System.Reflection.Assembly.GetExecutingAssembly();
+            string resourceName = Array.Find(asm.GetManifestResourceNames(), n => n.EndsWith("crosshair.ico", StringComparison.OrdinalIgnoreCase));
+            if (resourceName != null)
+            {
+                using var stream = asm.GetManifestResourceStream(resourceName);
+                if (stream != null) return new Icon(stream);
+            }
+            return SystemIcons.Application; // fallback if the resource wasn't found
+        }
+
         private void SetupTrayIcon()
         {
             trayIcon = new NotifyIcon
             {
-                Icon = SystemIcons.Application,
+                Icon = LoadAppIcon(),
                 Visible = true,
                 Text = "Crosshair Overlay (Ctrl+Alt+H to toggle)"
             };
@@ -145,6 +161,7 @@ namespace CrosshairOverlay
             if (disposing)
             {
                 UnregisterHotKey(Handle, HOTKEY_ID_TOGGLE);
+                trayIcon?.Icon?.Dispose();
                 trayIcon?.Dispose();
             }
             base.Dispose(disposing);

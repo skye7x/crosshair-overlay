@@ -10,6 +10,13 @@
     <AssemblyName>CrosshairOverlay</AssemblyName>
     <RootNamespace>CrosshairOverlay</RootNamespace>
     <StartupObject>CrosshairOverlay.Program</StartupObject>
+    <ApplicationIcon>crosshair.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="crosshair.ico" />
+    <EmbeddedResource Include="crosshair.ico" />
+  </ItemGroup>
+
 
 </Project>
