@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyName>CrosshairOverlay</AssemblyName>
+    <RootNamespace>CrosshairOverlay</RootNamespace>
+    <StartupObject>CrosshairOverlay.Program</StartupObject>
+    <ApplicationIcon>crosshair.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="crosshair.ico" />
+    <EmbeddedResource Include="crosshair.ico" />
+  </ItemGroup>
+
+
+</Project>

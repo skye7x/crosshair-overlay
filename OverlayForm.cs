@@ -1,0 +1,187 @@
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+
+namespace CrosshairOverlay
+{
+    /// <summary>
+    /// A transparent, click-through, always-on-top overlay that draws a white
+    /// crosshair in the center of the primary screen and is excluded from
+    /// most screen-capture / streaming tools (Windows 10 2004+ / Windows 11).
+    /// </summary>
+    public class OverlayForm : Form
+    {
+        // ---- Crosshair appearance (tweak to taste) ----
+        private const int ArmLength = 6;    // length of each arm, in pixels
+        private const int GapSize = 0;      // empty gap around the center (0 = solid plus)
+        private const int Thickness = 1;    // line thickness
+        private const int DotRadius = 0;    // center dot radius (0 = no dot, just the plus)
+
+        // ---- Win32 interop ----
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
+        [DllImport("user32.dll")]
+        private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+        [DllImport("user32.dll")]
+        private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+        private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+
+        private const int WS_EX_LAYERED = 0x00080000;
+        private const int WS_EX_TRANSPARENT = 0x00000020;
+        private const int WS_EX_TOOLWINDOW = 0x00000080;
+        private const int WS_EX_NOACTIVATE = 0x08000000;
+
+        private const int WM_HOTKEY = 0x0312;
+        private const int HOTKEY_ID_TOGGLE = 1;
+        private const uint MOD_CONTROL = 0x0002;
+        private const uint MOD_ALT = 0x0001;
+        private const uint VK_H = 0x48;
+
+        private NotifyIcon trayIcon;
+        private bool crosshairVisible = true;
+        private System.Windows.Forms.Timer topMostTimer;
+
+        public OverlayForm()
+        {
+            FormBorderStyle = FormBorderStyle.None;
+            ShowInTaskbar = false;
+            TopMost = true;
+            StartPosition = FormStartPosition.Manual;
+            // Use the working area (screen minus taskbar), NOT the full screen bounds.
+            // A full-screen TopMost window can knock the taskbar out of its own
+            // always-on-top z-order, letting other windows get dragged above it.
+            Bounds = Screen.PrimaryScreen.WorkingArea;
+            BackColor = Color.Magenta;            // arbitrary "key" color
+            TransparencyKey = Color.Magenta;       // becomes fully transparent
+            DoubleBuffered = true;
+
+            SetupTrayIcon();
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var cp = base.CreateParams;
+                // Layered + transparent => click-through. ToolWindow => no taskbar/alt-tab entry.
+                cp.ExStyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+                return cp;
+            }
+        }
+
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+
+            // Exclude this window from screen capture / streaming.
+            // Requires Windows 10 version 2004 (build 19041) or later.
+            bool ok = SetWindowDisplayAffinity(Handle, WDA_EXCLUDEFROMCAPTURE);
+            if (!ok)
+            {
+                // Falls back gracefully: window still works, just not capture-excluded.
+                // (Older Windows builds will fail this call.)
+            }
+
+            RegisterHotKey(Handle, HOTKEY_ID_TOGGLE, MOD_CONTROL | MOD_ALT, VK_H);
+
+            // Some games/apps steal the topmost slot; periodically reassert it.
+            // We stay within the working area, so this never fights the taskbar.
+            topMostTimer = new System.Windows.Forms.Timer { Interval = 3000 };
+            topMostTimer.Tick += (s, e) =>
+            {
+                if (!TopMost) TopMost = true;
+            };
+            topMostTimer.Start();
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HOTKEY_ID_TOGGLE)
+            {
+                crosshairVisible = !crosshairVisible;
+                Invalidate();
+                return;
+            }
+            base.WndProc(ref m);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            if (!crosshairVisible) return;
+
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
+            int cx = ClientSize.Width / 2;
+            int cy = ClientSize.Height / 2;
+
+            using (var pen = new Pen(Color.White, Thickness))
+            {
+                e.Graphics.DrawLine(pen, cx - GapSize - ArmLength, cy, cx - GapSize, cy); // left
+                e.Graphics.DrawLine(pen, cx + GapSize, cy, cx + GapSize + ArmLength, cy); // right
+                e.Graphics.DrawLine(pen, cx, cy - GapSize - ArmLength, cx, cy - GapSize); // top
+                e.Graphics.DrawLine(pen, cx, cy + GapSize, cx, cy + GapSize + ArmLength); // bottom
+            }
+
+            using (var brush = new SolidBrush(Color.White))
+            {
+                e.Graphics.FillEllipse(brush, cx - DotRadius, cy - DotRadius, DotRadius * 2, DotRadius * 2);
+            }
+        }
+
+        private static Icon LoadAppIcon()
+        {
+            // The icon is embedded via <EmbeddedResource Include="crosshair.ico" /> in the csproj.
+            var asm = System.Reflection.Assembly.GetExecutingAssembly();
+            string resourceName = Array.Find(asm.GetManifestResourceNames(), n => n.EndsWith("crosshair.ico", StringComparison.OrdinalIgnoreCase));
+            if (resourceName != null)
+            {
+                using var stream = asm.GetManifestResourceStream(resourceName);
+                if (stream != null) return new Icon(stream);
+            }
+            return SystemIcons.Application; // fallback if the resource wasn't found
+        }
+
+        private void SetupTrayIcon()
+        {
+            trayIcon = new NotifyIcon
+            {
+                Icon = LoadAppIcon(),
+                Visible = true,
+                Text = "Crosshair Overlay (Ctrl+Alt+H to toggle)"
+            };
+
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("Toggle Crosshair (Ctrl+Alt+H)", null, (s, e) =>
+            {
+                crosshairVisible = !crosshairVisible;
+                Invalidate();
+            });
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("Exit", null, (s, e) =>
+            {
+                trayIcon.Visible = false;
+                Application.Exit();
+            });
+            trayIcon.ContextMenuStrip = menu;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                UnregisterHotKey(Handle, HOTKEY_ID_TOGGLE);
+                topMostTimer?.Stop();
+                topMostTimer?.Dispose();
+                trayIcon?.Icon?.Dispose();
+                trayIcon?.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+    }
+}
